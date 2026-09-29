@@ -102,6 +102,75 @@ cannot pass by memorising.
 The estimator tests pin the analytic solver against grammars with exact answers,
 and compare it with the Monte Carlo estimate on the main language.
 
+## Experiment: how close does the model get?
+
+The tests show that the model *can* reach the floor on small languages. The
+experiment in [`experiments/simple_language`](experiments/simple_language/main.py)
+measures how close it gets on the main language, and with which architecture.
+
+### Setup
+
+- **Search:** [Optuna](https://optuna.org/) with a TPE sampler over the number of
+  layers, model width, heads, dropout and learning rate.
+- **Pruning:** Hyperband stops unpromising trials early. It can be switched to a
+  median pruner or disabled with `--pruner`.
+- **Tracking:** every trial is an [MLflow](https://mlflow.org/) run nested under
+  one parent run per study. Each run logs its hyperparameters and its per-epoch
+  train and validation loss. The best trial is tagged `best=true`, and the parent
+  run records its id.
+- **Data:** train, validation and test sets are sampled from the grammar with
+  different seeds, so they are independent. The best model is checkpointed during
+  the search and evaluated **once** on the test set, which played no part in
+  selecting it.
+
+### Result
+
+The best of 70 trials (48 of them pruned), trained for 25 epochs:
+
+| | |
+|---|---|
+| architecture | 4 layers, width 64, 2 heads |
+| learning rate / dropout | 2.6e-3 / 0.10 |
+| validation loss | 1.4327 |
+| **test loss** | **1.4368 nats/token** |
+| entropy floor | 1.4046 nats/token |
+| gap | 0.032 nats/token (perplexity 4.21 vs 4.07) |
+
+![Train and validation loss of the best trial over 25 epochs](plots/train_vaild_loss_lang_1.svg)
+
+The test loss is within about 2% of the theoretical optimum. Measured against the
+per-window floor, which is lower (roughly 1.39, see above), the gap is about
+0.04 nats/token. The test loss is only slightly above the validation loss, which
+shows that selecting the best of 70 trials on the validation set introduced
+little optimism.
+
+Optuna's hyperparameter importance ranks the **learning rate** and **dropout** as
+the most important parameters, ahead of the architecture itself.
+
+### Running it
+
+```bash
+# 1. start an MLflow tracking server (UI at http://localhost:8888)
+poetry run mlflow server --port 8888
+
+# 2. run the study: trials, epochs and pruner are configurable
+poetry run python -m experiments.simple_language.main \
+    --language-spec tests/language_specs/language_1.txt \
+    --n-trials 50 --n-epochs 10 --pruner hyperband
+
+# 3. optional: Optuna's dashboard for hyperparameter importance and slice plots
+poetry run optuna-dashboard sqlite:///experiments/simple_language/optuna.db \
+    --port 8081 --server wsgiref
+```
+
+The script prints the best trial and its test loss when it finishes. The Optuna
+study is stored in `experiments/simple_language/optuna.db` and resumes where it
+left off when you run it again.
+
+The dashboard needs `--server wsgiref`. With the default server it runs on
+gunicorn, whose forked workers inherit the SQLite connection, which then fails
+with `disk I/O error`.
+
 ## Layout
 
 ```
@@ -110,6 +179,8 @@ src/
   estimators/   analytic (linear system) and Monte Carlo entropy estimators
   model/        embedding, attention, feed-forward, block, decoder
   experiment/   training loop
+experiments/
+  simple_language/  hyperparameter search on the artificial language
 tests/
   language_specs/   the grammars used in tests
   integration/      data, estimator and model tests
@@ -127,10 +198,9 @@ tox                                # tests, flake8, black/isort, mypy
 
 ## Roadmap
 
-1. **Artificial language experiments.** Train on the main language as tracked
-   MLflow runs, measuring the gap to the entropy floor across architectures.
-   Generate sentences from the trained model and check with the grammar
-   how many of them are grammatical.
+1. **Artificial language experiments.** The hyperparameter search is done (see
+   above). Still to do: generate sentences from the trained model and check with
+   the grammar how many of them are grammatical, and which errors it makes.
 2. **Tokenizer.** Write a byte-level BPE tokenizer from scratch, with streaming
    training on word counts, and encode corpora to memory-mapped token files.
 3. **Modernised training.** Add pre-LayerNorm blocks (GPT-2 style) behind a flag,
