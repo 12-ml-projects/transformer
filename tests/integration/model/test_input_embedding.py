@@ -18,7 +18,7 @@ class TestInputEmbedding:
         x = get_x(2, 11)
 
         with pytest.raises(
-            ValueError, match="Sequence length 11 exceeds maximum length 10"
+            ValueError, match="Sequence length 11 exceeds max length 10"
         ):
             embedding(x)
 

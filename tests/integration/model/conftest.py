@@ -23,10 +23,11 @@ def small_model() -> SmallModelFactory:
         device = torch.device("cpu")
 
         decoder = Decoder(
-            n_dec_layers=2,
+            n_layers=2,
             max_length=32,
             input_dim=64,
             vocab_size=len(language.vocabulary(pcfg)),
+            heads=4,
             dropout=0.0,
         ).to(device)
         optimizer = torch.optim.Adam(decoder.parameters(), lr=1e-3)

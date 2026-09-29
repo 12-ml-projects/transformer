@@ -10,7 +10,10 @@ requires-python = ">=3.13"
 dependencies = [
     "torch (>=2.14.0,<3.0.0)",
     "nltk (>=3.10.3,<4.0.0)",
-    "numpy (>=2.5.3,<3.0.0)"
+    "numpy (>=2.5.3,<3.0.0)",
+    "click (>=8.5.0,<9.0.0)",
+    "optuna (>=5.0.0,<6.0.0)",
+    "mlflow (>=3.16.1,<4.0.0)"
 ]
 
 
@@ -39,5 +42,6 @@ ensure_newline_before_comments = true
 src_paths = ["src", "tests", "experiments"]
 [dependency-groups]
 dev = [
-    "pytest (>=9.1.1,<10.0.0)"
+    "pytest (>=9.1.1,<10.0.0)",
+    "optuna-dashboard (>=0.21.0,<0.22.0)"
 ]

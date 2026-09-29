@@ -22,3 +22,11 @@ settings.json
 
 # -- venv -- #
 .venv/
+
+# -- optuna -- #
+*.db
+
+# -- MLflow -- #
+mlruns/
+# model checkpoints
+*.pt
