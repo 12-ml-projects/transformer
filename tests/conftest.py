@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Protocol
 
 import pytest
+from nltk import PCFG
 
 from src.data import language
 from src.data.artificial import ArtificialDataset
@@ -16,7 +17,13 @@ class LanguagePath(Protocol):
 
 
 class DatasetFactory(Protocol):
-    def __call__(self, name: str, seed: int = 0) -> ArtificialDataset: ...
+    def __call__(
+        self,
+        name: str,
+        seed: int = 0,
+        context_length: int = 32,
+        dataset_size: int = 1_0000,
+    ) -> tuple[ArtificialDataset, PCFG]: ...
 
 
 @pytest.fixture()
@@ -34,9 +41,19 @@ def language_spec() -> LanguagePath:
 
 @pytest.fixture()
 def dataset(language_spec: LanguagePath) -> DatasetFactory:
-    def _artificial_dataset(name: str, seed: int = 0) -> ArtificialDataset:
+    def _artificial_dataset(
+        name: str, seed: int = 0, context_length: int = 32, dataset_size: int = 1_0000
+    ) -> tuple[ArtificialDataset, PCFG]:
         grammar = language.load(language_spec(name))
 
-        return ArtificialDataset(grammar, seed=seed)
+        return (
+            ArtificialDataset(
+                grammar,
+                seed=seed,
+                dataset_size=dataset_size,
+                context_length=context_length,
+            ),
+            grammar,
+        )
 
     return _artificial_dataset
