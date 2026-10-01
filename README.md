@@ -215,3 +215,44 @@ tox                                # tests, flake8, black/isort, mypy
 7. **LoRA and QLoRA from scratch.** Fine-tune the trained model with both, and
    measure what 4-bit quantization costs, including in nats above the entropy
    floor on the artificial language.
+
+## Use of AI
+
+This project was built with the help of an AI coding assistant (Claude, used
+through Claude Code). Because the project is partly a learning exercise, I wrote
+the core parts myself and used the assistant mostly as a reviewer and tutor.
+
+**My own work:**
+- the project idea: benchmarking a transformer against the exact entropy of a
+  probabilistic grammar
+- the grammar
+- the model components, adapted from a transformer I implemented earlier
+- the Monte Carlo estimator
+- the overall design of the data pipeline, tests and experiment
+- the codebase architecture, design choices, contracts
+- the testing infrastructure, e.g., fixtures, some tests but not all
+- the choice of tools
+
+**With help from the assistant:**
+- **Code review.** I ported the model components from an implementation I wrote
+  a few years ago and asked the assistant to review them for latent bugs. The
+  review surfaced several silent ones—a few lines of code—such as unregistered
+  submodules and a causal mask sized by the batch instead of the sequence.
+  They are fixed, learned from, and the tests now guard against them.
+- **Explanations** of concepts I was refreshing, such as the analytic entropy
+  of a PCFG, `register_buffer` and specific pruning strategies in hyperparameter search.
+- **Code.** I wrote the first versions of the training loop, the analytic
+  estimator and the experiment script, including the Optuna search and MLflow
+  tracking. The assistant refactored them and implemented parts I specified,
+  such as pruning, tagging the best run, the final test evaluation and the
+  linear-system solve. It also wrote some supporting code (the sampler that
+  tracks log-probabilities, the vocabulary and collate functions) and several
+  tests.
+- **This README,** which it drafted and I edited.
+
+The assistant also pointed out that the achievable loss per training window is
+slightly below the per-token entropy, and that correction is now part of the
+tests.
+
+All results reported here come from running the code in this repository. I
+reviewed the code and the explanations above and can account for them.
