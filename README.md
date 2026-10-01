@@ -197,6 +197,13 @@ poetry run pytest                  # full test suite, ~10 s on a laptop CPU
 tox                                # tests, flake8, black/isort, mypy
 ```
 
+To download [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories)
+(the GPT-4 version, about 2 GB) into `data/tinystories/`:
+
+```bash
+poetry run python -m experiments.download_data
+```
+
 ## Roadmap
 
 1. **Artificial language experiments.** The hyperparameter search is done (see

@@ -30,3 +30,6 @@ settings.json
 mlruns/
 # model checkpoints
 *.pt
+
+# -- datasets -- #
+data/
