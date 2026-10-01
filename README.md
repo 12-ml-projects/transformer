@@ -72,9 +72,10 @@ never a target, so the achievable loss per window is slightly *below*
 
 ## The model
 
-A decoder-only transformer following GPT-1, written from the individual pieces:
+A GPT-1-style decoder-only transformer, written from the individual pieces:
 
-- token embedding plus sinusoidal positional encoding, stored as a buffer;
+- token embedding plus sinusoidal positional encoding, stored as a buffer
+  (GPT-1 itself learns its position embeddings);
 - masked multi-head self-attention with a causal mask;
 - a position-wise feed-forward network with GELU;
 - post-LayerNorm residual blocks;
@@ -136,7 +137,7 @@ The best of 70 trials (48 of them pruned), trained for 25 epochs:
 | entropy floor | 1.4046 nats/token |
 | gap | 0.032 nats/token (perplexity 4.21 vs 4.07) |
 
-![Train and validation loss of the best trial over 25 epochs](plots/train_vaild_loss_lang_1.svg)
+![Train and validation loss of the best trial over 25 epochs](plots/train_valid_loss_lang_1.svg)
 
 The test loss is within about 2% of the theoretical optimum. Measured against the
 per-window floor, which is lower (roughly 1.39, see above), the gap is about
@@ -156,7 +157,7 @@ poetry run mlflow server --port 8888
 # 2. run the study: trials, epochs and pruner are configurable
 poetry run python -m experiments.simple_language.main \
     --language-spec tests/language_specs/language_1.txt \
-    --n-trials 50 --n-epochs 10 --pruner hyperband
+    --n-trials 50 --n-epochs 25 --pruner hyperband
 
 # 3. optional: Optuna's dashboard for hyperparameter importance and slice plots
 poetry run optuna-dashboard sqlite:///experiments/simple_language/optuna.db \
@@ -229,18 +230,18 @@ the core parts myself and used the assistant mostly as a reviewer and tutor.
 - the model components, adapted from a transformer I implemented earlier
 - the Monte Carlo estimator
 - the overall design of the data pipeline, tests and experiment
-- the codebase architecture, design choices, contracts
-- the testing infrastructure, e.g., fixtures, some tests but not all
+- the codebase architecture, design choices and interfaces
+- the testing infrastructure (fixtures) and part of the tests
 - the choice of tools
 
 **With help from the assistant:**
 - **Code review.** I ported the model components from an implementation I wrote
   a few years ago and asked the assistant to review them for latent bugs. The
-  review surfaced several silent ones—a few lines of code—such as unregistered
-  submodules and a causal mask sized by the batch instead of the sequence.
-  They are fixed, learned from, and the tests now guard against them.
+  review surfaced several silent ones, such as unregistered submodules and a
+  causal mask sized by the batch instead of the sequence. They are fixed, and
+  the tests now guard against them.
 - **Explanations** of concepts I was refreshing, such as the analytic entropy
-  of a PCFG, `register_buffer` and specific pruning strategies in hyperparameter search.
+  of a PCFG, `register_buffer` and pruning strategies in hyperparameter search.
 - **Code.** I wrote the first versions of the training loop, the analytic
   estimator and the experiment script, including the Optuna search and MLflow
   tracking. The assistant refactored them and implemented parts I specified,
