@@ -1,6 +1,6 @@
 import pytest
 
-from src.bpe.bpe import pretokenize, modified_bpe
+from src.bpe.bpe import modified_bpe, pretokenize
 
 
 class TestBPE:
