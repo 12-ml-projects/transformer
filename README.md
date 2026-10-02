@@ -148,6 +148,20 @@ little optimism.
 Optuna's hyperparameter importance ranks the **learning rate** and **dropout** as
 the most important parameters, ahead of the architecture itself.
 
+### Generated text
+
+As a smoke test, the best model generates 3,000 tokens after a one-sentence
+prompt, and each generated sentence is parsed with the grammar: **369 of 412
+(89.6%) are grammatical**. Simple sentences are flawless. Almost all errors are
+in nested relative clauses, where the model has to keep track of how many verbs
+are still owed and which subject each agrees with:
+
+```
+ok   some cats that a dog sees see some dogs .
+BAD  a dog that these dogs chase eat .
+BAD  this cat that these dogs that the cat sees sees eat .
+```
+
 ### Running it
 
 ```bash
@@ -162,6 +176,9 @@ poetry run python -m experiments.simple_language.main \
 # 3. optional: Optuna's dashboard for hyperparameter importance and slice plots
 poetry run optuna-dashboard sqlite:///experiments/simple_language/optuna.db \
     --port 8081 --server wsgiref
+
+# 4. generate text with the best model and check it against the grammar
+poetry run python -m experiments.simple_language.generate
 ```
 
 The script prints the best trial and its test loss when it finishes. The Optuna
@@ -172,19 +189,66 @@ The dashboard needs `--server wsgiref`. With the default server it runs on
 gunicorn, whose forked workers inherit the SQLite connection, which then fails
 with `disk I/O error`.
 
+## Tokenizer
+
+The next step is real text, so the project has a byte-level BPE tokenizer
+written from scratch in [`src/bpe`](src/bpe/bpe.py).
+
+- **Pre-tokenization:** a regex splits text into words, punctuation and
+  whitespace, keeping a leading space attached to the following word (`" cat"`),
+  so that merges never cross word boundaries.
+- **Training:** works on word counts rather than raw text. The corpus is streamed
+  once to count words; each merge then joins the most frequent adjacent pair of
+  ids, weighted by word frequency.
+- **Encoding:** within each word, applies the earliest-learned merge first, so
+  text is split exactly as it was during training.
+- **Byte level:** ids 0–255 are raw bytes, so any text can be encoded, with no
+  unknown tokens. Decoding joins the bytes before decoding UTF-8, so characters
+  that span several tokens survive the round trip.
+- **Storage:** merges are saved as an ordered JSON list of pairs, with no pickle
+  involved.
+
+### On TinyStories
+
+With a vocabulary of 4,096 tokens, trained on the first 100,000 stories in about
+three minutes on a laptop, the first merges are the building blocks of English
+(`" the"`, `" and"`, `" was"`), and the last ones are words like `" tornado"`
+and `" napkin"`. Typical story text comes out at one token per word:
+
+```
+Once| upon| a| time|,| there| was| a| little| girl| named| Lily|.
+```
+
+while text from outside the domain falls back to smaller pieces, without losing
+anything:
+
+```
+The| qu|ant|um| ch|rom|o|dy|nam|ic|s| l|ec|ture| was| post|p|on|ed|.
+```
+
+To train it (the merges are saved to `data/tinystories/merges.json`):
+
+```bash
+poetry run python -m experiments.train_tokenizer --vocab-size 4096 --max-documents 100000
+```
+
 ## Layout
 
 ```
 src/
+  bpe/          byte-level BPE tokenizer
   data/         grammar loading, sampling, vocabulary, windowed Dataset, collate
   estimators/   analytic (linear system) and Monte Carlo entropy estimators
   model/        embedding, attention, feed-forward, block, decoder
   experiment/   training loop
 experiments/
-  simple_language/  hyperparameter search on the artificial language
+  simple_language/    hyperparameter search on the artificial language
+  download_data.py    download TinyStories
+  train_tokenizer.py  train the BPE tokenizer on TinyStories
 tests/
   language_specs/   the grammars used in tests
-  integration/      data, estimator and model tests
+  unit/             tokenizer building blocks
+  integration/      data, estimator, model and tokenizer tests
 ```
 
 ## Getting started
