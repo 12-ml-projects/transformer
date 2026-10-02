@@ -22,6 +22,7 @@ class MaskedSelfAttention(torch.nn.Module):
         max_length: int,
         dropout: float,
         masked: bool = True,
+        residual_scale: float = 1.0,
     ) -> None:
         super().__init__()
 
@@ -35,6 +36,8 @@ class MaskedSelfAttention(torch.nn.Module):
             torch.nn.Linear(model_dim, head_dim, bias=False) for _ in range(heads)
         )
         self._output = torch.nn.Linear(head_dim * heads, model_dim, bias=False)
+        with torch.no_grad():
+            self._output.weight.mul_(residual_scale)
         self._dropout = torch.nn.Dropout(p=dropout)
         self.register_buffer(
             "_mask", torch.tril(torch.ones(max_length, max_length)), persistent=False

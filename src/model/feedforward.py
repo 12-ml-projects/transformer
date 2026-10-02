@@ -9,7 +9,7 @@ class FeedForward(torch.nn.Module):
     _w_2: torch.nn.Parameter
     _b_2: torch.nn.Parameter
 
-    def __init__(self, input_dim: int, output_dim: int):
+    def __init__(self, input_dim: int, output_dim: int, residual_scale: float = 1.0):
         super().__init__()
 
         he_1: float = math.sqrt(2 / input_dim)
@@ -30,7 +30,8 @@ class FeedForward(torch.nn.Module):
                 output_dim,
                 input_dim,
             )
-            * he_2,
+            * he_2
+            * residual_scale,
         )
         self._b_2 = torch.nn.Parameter(
             torch.zeros(input_dim),
