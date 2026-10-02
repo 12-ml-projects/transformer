@@ -268,26 +268,6 @@ To download [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories
 poetry run python -m experiments.download_data
 ```
 
-## Roadmap
-
-1. **Artificial language experiments.** The hyperparameter search is done (see
-   above). Still to do: generate sentences from the trained model and check with
-   the grammar how many of them are grammatical, and which errors it makes.
-2. **Tokenizer.** Write a byte-level BPE tokenizer from scratch, with streaming
-   training on word counts, and encode corpora to memory-mapped token files.
-3. **Modernised training.** Add pre-LayerNorm blocks (GPT-2 style) behind a flag,
-   plus a cosine learning-rate schedule with warmup.
-4. **Scaling laws.** Use Chinchilla's approach 2 (IsoFLOP profiles) on TinyStories
-   to find the compute-optimal model size and training length for a given
-   budget.
-5. **Containerisation.** Package training in a container, with data, checkpoints
-   and MLflow tracking outside the image.
-6. **Cloud training.** Run the larger IsoFLOP budgets and the final model on
-   cloud GPUs.
-7. **LoRA and QLoRA from scratch.** Fine-tune the trained model with both, and
-   measure what 4-bit quantization costs, including in nats above the entropy
-   floor on the artificial language.
-
 ## Use of AI
 
 This project was built with the help of an AI coding assistant (Claude, used
