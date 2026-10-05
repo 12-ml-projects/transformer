@@ -20,9 +20,11 @@ class BPE:
 
     merges: Merges
     vocab: dict[ID, bytes]
+    _cache: dict[str, Word]
 
     def __init__(self, merges: Merges):
         self.merges = merges
+        self._cache = {}
         self.vocab = {i: bytes([i]) for i in range(256)}
         for (a, b), new_id in sorted(merges.items(), key=lambda item: item[1]):
             self.vocab[new_id] = self.vocab[a] + self.vocab[b]
@@ -46,29 +48,34 @@ class BPE:
         return len(self.vocab)
 
     def encode(self, text: Document) -> tuple[ID, ...]:
-        pretokenized = pretokenize(text)
-        words = []
-
-        for word in pretokenized:
-            encoded_word = tuple(word.encode("utf-8"))
-
-            while True:
-                pairs = pairwise(encoded_word)
-
-                match = min(
-                    pairs,
-                    key=lambda pair: self.merges.get(pair, math.inf),
-                    default=None,
-                )
-                if match is None or match not in self.merges:
-                    break
-
-                new_id = self.merges[match]
-                encoded_word = merge(encoded_word, match, new_id)
-
-            words.append(encoded_word)
+        words = [self._encode_word(word) for word in pretokenize(text)]
 
         return tuple(id for word in words for id in word)
+
+    def _encode_word(self, word: str) -> Word:
+        """Encode one pre-tokenized piece, caching it since pieces repeat a lot."""
+        if word in self._cache:
+            return self._cache[word]
+
+        encoded_word = tuple(word.encode("utf-8"))
+
+        while True:
+            pairs = pairwise(encoded_word)
+
+            match = min(
+                pairs,
+                key=lambda pair: self.merges.get(pair, math.inf),
+                default=None,
+            )
+            if match is None or match not in self.merges:
+                break
+
+            new_id = self.merges[match]
+            encoded_word = merge(encoded_word, match, new_id)
+
+        self._cache[word] = encoded_word
+
+        return encoded_word
 
     def decode(self, ids: tuple[ID, ...]) -> Document:
         return b"".join(self.vocab[id] for id in ids).decode("utf-8", errors="replace")

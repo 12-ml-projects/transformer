@@ -1,17 +1,16 @@
 """Train a BPE tokenizer on TinyStories and save its merges."""
 
-from collections.abc import Iterator
 from itertools import islice
 from pathlib import Path
 
 import click
 
 from src.bpe import BPE
+from src.data.tiny_stories import read_documents
 
 DATA = Path(__file__).parent.parent / "data" / "tinystories"
 CORPUS = DATA / "TinyStoriesV2-GPT4-train.txt"
 MERGES = DATA / "merges.json"
-END_OF_TEXT = "<|endoftext|>"
 
 
 @click.command()
@@ -29,19 +28,6 @@ def main(vocab_size: int, max_documents: int | None):
     tokenizer.save(MERGES)
 
     click.echo(f"Saved {tokenizer.vocab_size} tokens to {MERGES}")
-
-
-def read_documents(path: Path) -> Iterator[str]:
-    """Stream the stories one by one, splitting on the end-of-text marker."""
-    with path.open(encoding="utf-8") as file:
-        story: list[str] = []
-
-        for line in file:
-            if line.strip() == END_OF_TEXT:
-                yield "".join(story).strip()
-                story = []
-            else:
-                story.append(line)
 
 
 if __name__ == "__main__":

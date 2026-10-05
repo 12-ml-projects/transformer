@@ -32,4 +32,4 @@ mlruns/
 *.pt
 
 # -- datasets -- #
-data/
+data/tinystories
