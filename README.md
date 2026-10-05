@@ -232,19 +232,46 @@ To train it (the merges are saved to `data/tinystories/merges.json`):
 poetry run python -m experiments.train_tokenizer --vocab-size 4096 --max-documents 100000
 ```
 
+### Data pipeline
+
+Training reads tokens, not text. Each split is encoded once into a flat file of
+`uint16` token ids, with a dedicated end-of-text token (id 4096, one past the
+tokenizer's vocabulary) between stories. The tokenizer never sees the
+`<|endoftext|>` marker itself: it only splits the stories.
+
+[`TinyStoriesDataset`](src/data/tiny_stories.py) opens that file as a NumPy
+memory map, so the corpus never has to fit in memory, and serves consecutive,
+non-overlapping windows of `context_length + 1` tokens. Each item is an
+`Example(inputs, targets)`, where the targets are the inputs shifted by one
+token. With the causal mask, one window therefore trains `context_length`
+next-token predictions at once.
+
+The token file is written to a temporary file that is renamed only when encoding
+finishes, so an interrupted run never leaves a partial file behind. Encoding
+caches the ids of every pre-tokenized piece, since pieces like `" the"` repeat
+millions of times.
+
+To encode the train and validation sets into `data/tinystories/train.bin` and
+`valid.bin`:
+
+```bash
+poetry run python -m experiments.encode_data
+```
+
 ## Layout
 
 ```
 src/
   bpe/          byte-level BPE tokenizer
-  data/         grammar loading, sampling, vocabulary, windowed Dataset, collate
+  data/         grammar sampling and windowed datasets for both languages
   estimators/   analytic (linear system) and Monte Carlo entropy estimators
   model/        embedding, attention, feed-forward, block, decoder
   experiment/   training loop
 experiments/
   simple_language/    hyperparameter search on the artificial language
-  download_data.py    download TinyStories
+  download_data.py    download TinyStories (train and validation)
   train_tokenizer.py  train the BPE tokenizer on TinyStories
+  encode_data.py      encode both splits into token files
 tests/
   language_specs/   the grammars used in tests
   unit/             tokenizer building blocks
@@ -262,7 +289,8 @@ tox                                # tests, flake8, black/isort, mypy
 ```
 
 To download [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories)
-(the GPT-4 version, about 2 GB) into `data/tinystories/`:
+(the GPT-4 version: about 2 GB of training data and a 22 MB validation set) into
+`data/tinystories/`:
 
 ```bash
 poetry run python -m experiments.download_data

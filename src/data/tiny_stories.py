@@ -47,6 +47,10 @@ class TinyStoriesDataset(Dataset[Example]):
         """The model's vocabulary: the tokenizer's plus the end-of-text token."""
         return self._tokenizer.vocab_size + 1
 
+    @property
+    def n_tokens(self) -> int:
+        return len(self._loaded_tokens())
+
     def load(self, skip_existing: bool = True) -> None:
         if not self._token_file.exists() or not skip_existing:
             self._write_tokens()
