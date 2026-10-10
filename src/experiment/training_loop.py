@@ -17,27 +17,48 @@ def train(
     loss_fn: torch.nn.Module,
     train_loader: Iterable[Batch],
     valid_loader: Iterable[Batch],
-    n_epochs: int,
+    n_tokens: int,
+    eval_every: int,
     device: torch.device,
 ) -> Iterator[tuple[TrainLoss, ValidLoss]]:
-    """Train for n_epochs, yielding (train_loss, valid_loss) after each epoch."""
-    for _ in range(n_epochs):
-        model.train()
-        total_loss = 0.0
-        n_samples = 0
+    """Train on n_tokens target tokens, passing over the training data as often as
+    needed, and yield (train_loss, valid_loss) every eval_every tokens and at the end.
 
-        for inputs, targets in train_loader:
-            inputs, targets = inputs.to(device), targets.to(device)
+    The train loss is the average over the tokens since the previous evaluation.
+    """
+    model.train()
+    tokens_seen = 0
+    next_eval = eval_every
+    total_loss = 0.0
+    n_loss_tokens = 0
 
-            optimizer.zero_grad()
-            loss = _loss(model, loss_fn, inputs, targets)
-            loss.backward()
-            optimizer.step()
+    for inputs, targets in _endless(train_loader):
+        inputs, targets = inputs.to(device), targets.to(device)
 
-            total_loss += loss.item() * inputs.size(0)
-            n_samples += inputs.size(0)
+        optimizer.zero_grad()
+        loss = _loss(model, loss_fn, inputs, targets)
+        loss.backward()
+        optimizer.step()
 
-        yield total_loss / n_samples, evaluate(model, loss_fn, valid_loader, device)
+        batch_tokens = targets.numel()
+        total_loss += loss.item() * batch_tokens
+        n_loss_tokens += batch_tokens
+        tokens_seen += batch_tokens
+
+        finished = tokens_seen >= n_tokens
+        if tokens_seen >= next_eval or finished:
+            yield total_loss / n_loss_tokens, evaluate(
+                model, loss_fn, valid_loader, device
+            )
+
+            model.train()
+            total_loss = 0.0
+            n_loss_tokens = 0
+            while next_eval <= tokens_seen:
+                next_eval += eval_every
+
+        if finished:
+            return
 
 
 def evaluate(
@@ -48,7 +69,7 @@ def evaluate(
 ) -> ValidLoss:
     model.eval()
     total_loss = 0.0
-    n_samples = 0
+    n_tokens = 0
 
     with torch.no_grad():
         for inputs, targets in loader:
@@ -56,10 +77,23 @@ def evaluate(
 
             loss = _loss(model, loss_fn, inputs, targets)
 
-            total_loss += loss.item() * inputs.size(0)
-            n_samples += inputs.size(0)
+            total_loss += loss.item() * targets.numel()
+            n_tokens += targets.numel()
 
-    return total_loss / n_samples
+    return total_loss / n_tokens
+
+
+def _endless(loader: Iterable[Batch]) -> Iterator[Batch]:
+    """Pass over the loader again and again, so a shuffling loader reshuffles
+    every pass (unlike itertools.cycle, which replays the first pass)."""
+    while True:
+        empty = True
+        for batch in loader:
+            empty = False
+            yield batch
+
+        if empty:
+            raise ValueError("The training loader yields no batches")
 
 
 def _loss(

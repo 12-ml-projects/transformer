@@ -22,8 +22,7 @@ class TestOverfit:
         ds, pcfg = dataset("constant", context_length=32, dataset_size=100)
         model, optimizer, loss_fn, device = small_model(pcfg)
 
-        max_epochs = 25
-
+        tokens_per_epoch = len(ds) * 32
         collator = partial(collate, grammar=pcfg)
 
         for _, valid_loss in train(
@@ -32,7 +31,8 @@ class TestOverfit:
             loss_fn=loss_fn,
             train_loader=DataLoader(ds, batch_size=4, collate_fn=collator),
             valid_loader=DataLoader(ds, batch_size=4, collate_fn=collator),
-            n_epochs=max_epochs,
+            n_tokens=25 * tokens_per_epoch,
+            eval_every=tokens_per_epoch,
             device=device,
         ):
             if valid_loss < 0.001:
@@ -65,6 +65,7 @@ class TestOverfit:
             Analytic().get_entropy(pcfg) * (context_length + 1) - entropy_first_token
         ) / context_length
 
+        tokens_per_epoch = len(train_ds) * context_length
         collator = partial(collate, grammar=pcfg)
 
         for _, valid_loss in train(
@@ -75,7 +76,8 @@ class TestOverfit:
                 train_ds, batch_size=32, shuffle=True, collate_fn=collator
             ),
             valid_loader=DataLoader(valid_ds, batch_size=32, collate_fn=collator),
-            n_epochs=25,
+            n_tokens=25 * tokens_per_epoch,
+            eval_every=tokens_per_epoch,
             device=device,
         ):
             assert valid_loss > limit - 1e-3, "Validation loss beat the entropy limit"

@@ -25,6 +25,8 @@ BEST_MODEL_PATH = RESULTS_DIR / "best_model.pt"
 
 CONTEXT_LENGTH = 32
 BATCH_SIZE = 32
+DATASET_SIZE = 1_000
+TOKENS_PER_EPOCH = DATASET_SIZE * CONTEXT_LENGTH
 
 TRAIN_SEED = 0
 VALID_SEED = 1
@@ -136,7 +138,9 @@ def make_model(params: dict[str, Any], pcfg: PCFG) -> Decoder:
 
 
 def make_loader(pcfg: PCFG, seed: int, shuffle: bool = False) -> DataLoader[Any]:
-    dataset = ArtificialDataset(pcfg, seed=seed, context_length=CONTEXT_LENGTH)
+    dataset = ArtificialDataset(
+        pcfg, seed=seed, dataset_size=DATASET_SIZE, context_length=CONTEXT_LENGTH
+    )
     collator = partial(language.collate, grammar=pcfg)
 
     return DataLoader(
@@ -180,7 +184,8 @@ def objective(trial: optuna.trial.Trial, n_epochs: int, pcfg: PCFG) -> float:
                 loss_fn=loss_fn,
                 train_loader=train_loader,
                 valid_loader=valid_loader,
-                n_epochs=n_epochs,
+                n_tokens=n_epochs * TOKENS_PER_EPOCH,
+                eval_every=TOKENS_PER_EPOCH,
                 device=device,
             )
         ):

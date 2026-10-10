@@ -81,8 +81,10 @@ A GPT-1-style decoder-only transformer, written from the individual pieces:
 - post-LayerNorm residual blocks;
 - a linear output layer producing logits for `CrossEntropyLoss`.
 
-The training loop is a generator that yields `(train_loss, valid_loss)` after
-every epoch. The caller decides when to stop, log or plot.
+The training loop trains for a budget of tokens (rather than epochs), passing over
+the data as often as needed, and is a generator that yields
+`(train_loss, valid_loss)` at a fixed interval of tokens. The caller decides when
+to stop, log or plot.
 
 ## What the tests certify
 

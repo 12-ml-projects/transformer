@@ -1,18 +1,20 @@
 from random import Random
-from typing import Final, overload
+from typing import Final, TypeAlias, overload
 
 import nltk
 from torch.utils.data import Dataset
 
 from src.data import language
 
+Window: TypeAlias = list[str]
 
-class ArtificialDataset(Dataset[list[str]]):
+
+class ArtificialDataset(Dataset[Window]):
     grammar: Final[nltk.PCFG]
     seed: Final[int]
     context_length: Final[int]
     _dataset_size: Final[int]
-    _cache: dict[int, list[str]]
+    _cache: dict[int, Window]
 
     def __init__(
         self,
@@ -28,12 +30,12 @@ class ArtificialDataset(Dataset[list[str]]):
         self._cache = {}
 
     @overload
-    def __getitem__(self, index: int) -> list[str]: ...
+    def __getitem__(self, index: int) -> Window: ...
 
     @overload
-    def __getitem__(self, index: slice) -> list[list[str]]: ...
+    def __getitem__(self, index: slice) -> list[Window]: ...
 
-    def __getitem__(self, index: int | slice) -> list[str] | list[list[str]]:
+    def __getitem__(self, index: int | slice) -> Window | list[Window]:
         if isinstance(index, slice):
             return [self[i] for i in range(*index.indices(len(self)))]
 
@@ -44,7 +46,7 @@ class ArtificialDataset(Dataset[list[str]]):
 
         if index not in self._cache:
             rng = Random(f"{self.seed}:{index}")
-            tokens: list[str] = []
+            tokens: Window = []
             while len(tokens) < self.context_length + 1:
                 sentence, _ = language.sample(self.grammar, rng)
                 tokens.extend(sentence)
