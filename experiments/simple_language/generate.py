@@ -9,7 +9,7 @@ import optuna
 import torch
 from nltk.grammar import PCFG
 
-from experiments.simple_language import main as experiment
+from experiments.simple_language import train as experiment
 from src.data import language
 from src.model.transformer import Decoder
 

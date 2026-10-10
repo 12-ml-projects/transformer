@@ -108,7 +108,7 @@ and compare it with the Monte Carlo estimate on the main language.
 ## Experiment: how close does the model get?
 
 The tests show that the model *can* reach the floor on small languages. The
-experiment in [`experiments/simple_language`](experiments/simple_language/main.py)
+experiment in [`experiments/simple_language`](experiments/simple_language/train.py)
 measures how close it gets on the main language, and with which architecture.
 
 ### Setup
@@ -171,7 +171,7 @@ BAD  this cat that these dogs that the cat sees sees eat .
 poetry run mlflow server --port 8888
 
 # 2. run the study: trials, epochs and pruner are configurable
-poetry run python -m experiments.simple_language.main \
+poetry run python -m experiments.simple_language.train \
     --language-spec tests/language_specs/language_1.txt \
     --n-trials 50 --n-epochs 25 --pruner hyperband
 
