@@ -81,10 +81,17 @@ A GPT-1-style decoder-only transformer, written from the individual pieces:
 - post-LayerNorm residual blocks;
 - a linear output layer producing logits for `CrossEntropyLoss`.
 
+With `gpt_2_like=True` it becomes a GPT-2-style decoder: pre-LayerNorm blocks, a
+final LayerNorm before the output layer, and the projections that write into the
+residual stream initialized smaller by `1/√(2 · n_layers)`, so the residual stream
+does not grow with depth.
+
 The training loop trains for a budget of tokens (rather than epochs), passing over
 the data as often as needed, and is a generator that yields
 `(train_loss, valid_loss)` at a fixed interval of tokens. The caller decides when
-to stop, log or plot.
+to stop, log or plot. For TinyStories it uses the GPT-3 recipe: AdamW
+(β₂ = 0.95, weight decay 0.1 on weight matrices only), a linear warmup followed by
+cosine decay to 10% of the peak learning rate, and gradient clipping at norm 1.0.
 
 ## What the tests certify
 
@@ -260,6 +267,103 @@ To encode the train and validation sets into `data/tinystories/train.bin` and
 poetry run python -m experiments.encode_data
 ```
 
+## Scaling laws on TinyStories
+
+To choose the size of the TinyStories model, the project follows Chinchilla's
+approach 2 (IsoFLOP profiles): for a fixed compute budget `C`, train models of
+different sizes `N`, each on `D = C / 6N` tokens, and find the size with the
+lowest loss. The optimal sizes of several budgets then give a scaling law
+`N_opt ∝ C^a`, which predicts the right model for a larger budget.
+
+### One run
+
+[`isoflops_run.py`](experiments/tinystories/isoflops_run.py) trains one model. A
+run is defined by just two numbers, the budget and the depth; everything else is
+held fixed, so that differences in loss can only come from `N` and `D`:
+
+- the shape: width grows with depth at a fixed ratio (`d_model = 32 × n_layers`,
+  one head per 32 dimensions), so every model has a sensible shape. Kaplan et al.
+  found the loss to depend mainly on the parameter count and only weakly on the
+  shape, except at extremes such as very deep and narrow models;
+- the training recipe, with the cosine schedule spanning exactly the run's `D`
+  tokens, as Chinchilla requires;
+- no dropout: each run sees every token at most once, so there is nothing to
+  overfit.
+
+Each run is an MLflow run tagged with its sweep, logging its loss curves, model
+size, `D`, FLOPs and throughput. Only the final validation loss enters the
+analysis: points from the middle of a run are not valid for a smaller budget,
+because their learning-rate schedule has not finished.
+
+### Counting parameters
+
+How `N` is counted matters a lot at this scale, because the output layer
+(`d_model × 4,097`) is large compared to small models:
+
+| convention | counts | used by |
+|---|---|---|
+| non-embedding (`n_params`) | the transformer blocks | Kaplan et al. |
+| total | everything, embeddings included | Chinchilla |
+| compute (`compute_params`) | the blocks plus the output layer | this project |
+
+The compute convention counts the parameters that take part in a matrix
+multiplication on every token (the input embedding is only a lookup), so a token
+costs about `6 × compute_params` FLOPs. `D` is derived from it. Leaving the
+output layer out would hand the smallest models, which see the most tokens, up to
+3.6 times more real compute than their budget.
+
+### A sweep and its profiles
+
+[`isoflops_sweep.py`](experiments/tinystories/isoflops_sweep.py) plans and runs a
+whole sweep: for each budget, a few depths whose sizes spread from a third to
+three times the size Chinchilla's rule of thumb predicts (about 20 tokens per
+parameter, so `N ≈ √(C / 120)`). It skips runs the sweep has already finished, so
+it can be stopped and restarted.
+[`plot_parabolas.py`](experiments/tinystories/plot_parabolas.py) fetches a sweep
+from MLflow, fits a parabola in log size through the final losses of each budget,
+and fits the scaling law through the minima of those parabolas.
+
+```bash
+poetry run python -m experiments.tinystories.isoflops_sweep \
+    --budget 1e13 --budget 3.16e13 --budget 1e14 --budget 3.16e14 --budget 1e15 \
+    --sweep final
+poetry run python -m experiments.tinystories.plot_parabolas --sweep final
+```
+
+### Results
+
+The first four budgets (the largest is still running) each give a clear profile,
+with the minimum bracketed by smaller and larger models:
+
+![IsoFLOP profiles: final validation loss against model size, one panel per budget](plots/isoflops_final.png)
+
+| budget | optimal size | `√(C / 120)` | tokens | tokens per parameter | loss |
+|---|---|---|---|---|---|
+| 10¹³ | 281k | 289k | 5.9M | 21.0 | 4.07 |
+| 3.16 × 10¹³ | 474k | 513k | 11.1M | 23.5 | 3.47 |
+| 10¹⁴ | 831k | 913k | 20.1M | 24.1 | 2.88 |
+| 3.16 × 10¹⁴ | 1.48M | 1.62M | 35.5M | 24.0 | 2.32 |
+
+The minima lie on a straight line in log-log space, the scaling law
+`N_opt = 0.151 · C^0.48`, so that `D_opt ∝ C^0.52`:
+
+![Scaling law: the optimal model size of each budget, with the fitted power law and Chinchilla's rule of thumb](plots/isoflops_final_law.png)
+
+With `N` counted as compute parameters, consistently with how `C` and `D` are
+computed, this is close to Chinchilla: an exponent near 0.5, so model size and
+data should grow about equally with compute, and a stable 21 to 24 tokens per
+parameter against Chinchilla's rule of thumb of about 20. Counted as non-embedding
+parameters, the same runs grow as about `C^0.84`, on the steep side like Kaplan's
+0.73. Much of the difference between the two papers' scaling laws comes from
+exactly this choice of whether to count embedding parameters, which matters most
+for small models (Pearce and Song, "Reconciling Kaplan and Chinchilla Scaling
+Laws", 2024). With four budgets spanning one and a half decades of compute, the
+exponents are still preliminary.
+
+On an Apple-silicon laptop (MPS), small models train at about 1.5 × 10¹¹ FLOPs
+per second, so a run takes about 10 minutes at `C = 10¹⁴` and one to two hours at
+`C = 10¹⁵`.
+
 ## Layout
 
 ```
@@ -268,9 +372,10 @@ src/
   data/         grammar sampling and windowed datasets for both languages
   estimators/   analytic (linear system) and Monte Carlo entropy estimators
   model/        embedding, attention, feed-forward, block, decoder
-  experiment/   training loop
+  experiment/   training loop, optimizer and learning-rate schedule
 experiments/
   simple_language/    hyperparameter search on the artificial language
+  tinystories/        IsoFLOPs runs, sweeps and plots on TinyStories
   download_data.py    download TinyStories (train and validation)
   train_tokenizer.py  train the BPE tokenizer on TinyStories
   encode_data.py      encode both splits into token files
