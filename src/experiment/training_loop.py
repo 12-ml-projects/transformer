@@ -2,6 +2,7 @@ from collections.abc import Iterable, Iterator
 from typing import TypeAlias
 
 import torch
+from torch.optim.lr_scheduler import LRScheduler
 
 Inputs: TypeAlias = torch.Tensor
 Targets: TypeAlias = torch.Tensor
@@ -20,11 +21,15 @@ def train(
     n_tokens: int,
     eval_every: int,
     device: torch.device,
+    scheduler: LRScheduler | None = None,
+    max_grad_norm: float | None = None,
 ) -> Iterator[tuple[TrainLoss, ValidLoss]]:
     """Train on n_tokens target tokens, passing over the training data as often as
     needed, and yield (train_loss, valid_loss) every eval_every tokens and at the end.
 
     The train loss is the average over the tokens since the previous evaluation.
+    A scheduler, if given, is stepped once per optimizer step. With max_grad_norm,
+    the global norm of all gradients is clipped to it before each step.
     """
     model.train()
     tokens_seen = 0
@@ -38,7 +43,11 @@ def train(
         optimizer.zero_grad()
         loss = _loss(model, loss_fn, inputs, targets)
         loss.backward()
+        if max_grad_norm is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
         optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
 
         batch_tokens = targets.numel()
         total_loss += loss.item() * batch_tokens
