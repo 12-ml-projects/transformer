@@ -364,6 +364,72 @@ On an Apple-silicon laptop (MPS), small models train at about 1.5 × 10¹¹ FLOP
 per second, so a run takes about 10 minutes at `C = 10¹⁴` and one to two hours at
 `C = 10¹⁵`.
 
+## The TinyStories model
+
+With the scaling law, choosing the model for a larger budget is a calculation.
+For a budget of `C = 1.2 × 10¹⁶` FLOPs, planned as about eight hours on the
+laptop, the law gives `N_opt ≈ 7.3M` compute parameters. The closest model on the
+shape grid has 8 layers (`d_model = 256`, 8 heads, 7.36M compute parameters), and
+it trains on `D = C / 6N ≈ 272M` tokens, about 37 per parameter and half of the
+training set, so each token is still seen at most once.
+
+The run uses the same script and recipe as the sweep, so the extrapolation applies
+to it. With `--save-model`, it also saves a numbered snapshot at every evaluation:
+
+```bash
+caffeinate -i poetry run python -m experiments.tinystories.isoflops_run \
+    --budget 1.2e16 --n-layers 8 --sweep long-run --save-model checkpoints/l8.pt
+```
+
+It took 6.1 hours (12.3k tokens per second, faster than the larger models of the
+sweep suggested), and the validation loss fell steadily to **1.424 nats/token**:
+
+| tokens | 27M | 54M | 81M | 109M | 136M | 163M | 190M | 217M | 244M | 272M |
+|---|---|---|---|---|---|---|---|---|---|---|
+| validation loss | 1.946 | 1.765 | 1.688 | 1.630 | 1.581 | 1.537 | 1.498 | 1.461 | 1.437 | 1.424 |
+
+### Generated text
+
+Continuations of a few prompts (in bold), sampled at temperature 0.8:
+
+> **Tom and his dog went to the park. Suddenly,** he saw a group of kids playing
+> with a ball. Tom was excited and wanted to join them. He ran up to the group and
+> asked, "Can I play with you?" The girl's eyes lit up and she said, "Yes!" Tom and
+> the girl played with the ball, throwing it high into the sky. The ball flew high
+> into the sky and then disappeared under a tree. […] The girl smiled, and they
+> both smiled. Tom and the girl became friends and played together in the park
+> often. `<|endoftext|>`
+
+> **Once upon a time, there was a little girl named Lily. She loved to** dance.
+> She would dance all day long. […] One day, it was very cold outside. Lily put on
+> her warm coat and went outside. She saw a big tree with lots ofMax. The tree had
+> many fruits. Lily wanted to eat some fruits, but she was scared of the wind.
+> Lily took a big bite of the fruits. They were yummy! She shared them with her mom
+> and dad. […] `<|endoftext|>`
+
+> **The sun was hot, so Ben wanted to eat something cold. He asked his mom,** "What
+> is cocoa?" His mom said, "It is cold today. I bet you can have some cocoa if you
+> need some cold water." Ben happily accepted his cocoa and took a sip. The cocoa
+> was so warm that it made him feel cool. He smiled at his mom and thanked her for
+> the cocoa. The end. `<|endoftext|>`
+
+> **Sara had a red ball. One day, she lost it. She was very sad because** she loved
+> her red ball so much. That day, Lucy met a wise old owl. The owl told her that if
+> she gave her red ball back, the red ball would be her friend. […] The owl said,
+> "That is my red ball. You can have it back if you say thank you." Lucy learned
+> that being nice is important and can help others. `<|endoftext|>`
+
+The grammar is almost flawless, dialogue is quoted correctly, and the stories have
+a shape: a setup, a problem, a resolution, often a moral, and an end-of-text token
+of their own. The weaknesses are the ones expected of a model this small. It loses
+track of characters (Sara becomes Lucy), its logic slips (the cold treat is warm
+cocoa that makes Ben feel cool), and now and then it produces a broken phrase
+("lots ofMax").
+
+The snapshots show the progression. After 27M tokens the text is already
+grammatical but simple and repetitive (one story mentions "the slide" six times);
+by 136M tokens the plots are richer; the final model is mainly more consistent.
+
 ## Layout
 
 ```
