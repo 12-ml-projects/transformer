@@ -49,7 +49,8 @@ VALID_WINDOWS = 1_024
 @click.option(
     "--save-model",
     type=click.Path(dir_okay=False, path_type=Path),
-    help="Save the trained model and its configuration to this .pt file.",
+    help="Save the trained model and its configuration to this .pt file, with a "
+    "numbered snapshot next to it at every evaluation.",
 )
 def main(
     budget: float,
@@ -116,6 +117,9 @@ def run(
     start = time.perf_counter()
     valid_loss = math.inf
 
+    if save_model is not None:
+        save_model.parent.mkdir(parents=True, exist_ok=True)
+
     for idx, (train_loss, valid_loss) in enumerate(
         train(
             model=model,
@@ -132,10 +136,15 @@ def run(
             max_grad_norm=1.0,
         )
     ):
+        tokens_seen = min((idx + 1) * eval_every, n_tokens)
         mlflow.log_metrics(
-            {"train_loss": train_loss, "valid_loss": valid_loss},
-            step=min((idx + 1) * eval_every, n_tokens),
+            {"train_loss": train_loss, "valid_loss": valid_loss}, step=tokens_seen
         )
+        if save_model is not None:
+            snapshot = save_model.with_name(
+                f"{save_model.stem}-{idx + 1:02d}{save_model.suffix}"
+            )
+            save(snapshot, config, model, tokens_seen)
 
     time_delta = time.perf_counter() - start
     result = {
@@ -149,12 +158,22 @@ def run(
     mlflow.log_metrics(result)
 
     if save_model is not None:
-        # The configuration travels with the weights, so the file alone is enough to
-        # rebuild the model: Decoder(**checkpoint["config"]).
-        save_model.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"config": config, "state_dict": model.state_dict()}, save_model)
+        save(save_model, config, model, n_tokens)
 
     return result
+
+
+def save(path: Path, config: dict[str, Any], model: Decoder, tokens_seen: int) -> None:
+    """The configuration travels with the weights, so the file alone is enough to
+    rebuild the model: Decoder(**checkpoint["config"])."""
+    torch.save(
+        {
+            "config": config,
+            "state_dict": model.state_dict(),
+            "tokens_seen": tokens_seen,
+        },
+        path,
+    )
 
 
 def model_config(n_layers: int) -> dict[str, Any]:

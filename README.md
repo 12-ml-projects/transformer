@@ -364,6 +364,152 @@ On an Apple-silicon laptop (MPS), small models train at about 1.5 × 10¹¹ FLOP
 per second, so a run takes about 10 minutes at `C = 10¹⁴` and one to two hours at
 `C = 10¹⁵`.
 
+## The TinyStories models
+
+With the scaling law, choosing the model for a larger budget is a calculation:
+the law gives the optimal size, the closest model on the shape grid is trained,
+and `D = C / 6N` gives its tokens. Two models were trained this way, for a budget
+planned as about eight hours on the laptop and for one of about thirty hours.
+The larger budget is close to the most this setup allows: its 551M tokens are
+almost the whole training set (553M target tokens), so each token is still seen
+at most once.
+
+| | 8 hours | 30 hours |
+|---|---|---|
+| budget `C` | 1.2 × 10¹⁶ | 5.9 × 10¹⁶ |
+| `N_opt` from the law | 7.3M | 16.9M |
+| model | 8 layers, `d_model = 256`, 8 heads | 11 layers, `d_model = 352`, 11 heads |
+| compute parameters | 7.36M | 17.84M |
+| tokens (per parameter) | 272M (37) | 551M (31) |
+| training time | 6.1 hours | 28.3 hours |
+| **validation loss** | **1.424 nats/token** | **1.251 nats/token** |
+
+The runs use the same script and recipe as the sweep, so the extrapolation
+applies to them. With `--save-model`, the script also saves a numbered snapshot at
+every evaluation:
+
+```bash
+caffeinate -i poetry run python -m experiments.tinystories.isoflops_run \
+    --budget 5.9e16 --n-layers 11 --sweep long-run --save-model checkpoints/l11.pt
+```
+
+In both runs the validation loss fell steadily to the end, with the steepest
+gains early and a final push as the learning rate decays:
+
+| share of the run | 10% | 20% | 30% | 40% | 50% | 60% | 70% | 80% | 90% | 100% |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 8 hours | 1.946 | 1.765 | 1.688 | 1.630 | 1.581 | 1.537 | 1.498 | 1.461 | 1.437 | 1.424 |
+| 30 hours | 1.664 | 1.557 | 1.499 | 1.458 | 1.413 | 1.375 | 1.335 | 1.295 | 1.266 | 1.251 |
+
+Five times the compute bought 0.17 nats/token. That is a real gain but a
+diminishing one, as a power law in compute predicts.
+
+A loss of 1.25 nats/token (perplexity 3.5) would be implausibly low on general
+text, but TinyStories is a narrow domain by design: a vocabulary a young child
+would understand, short sentences, and plots built from the same few templates,
+with many stories that closely resemble each other. The validation set is a
+separate file, encoded separately and never trained on, but stories in it can
+still be near-copies of training stories. The loss is also per token of this
+4,096-token tokenizer, so it cannot be compared directly with results that use a
+different vocabulary.
+
+### Generated text
+
+Continuations of the same prompts (in bold) by both models, sampled at temperature
+0.8 with the same seed. The larger model:
+
+> **Sara had a red ball. One day, she lost it. She was very sad because** she loved
+> her red ball so much. She looked everywhere for it, but she could not find it.
+> She cried and cried because she had lost her red ball. Sara's friend, a dog named
+> Max, saw her crying. Max asked, "Why are you sad, Sara?" Sara told him about her
+> lost red ball. Max wanted to help Sara find her red ball. So, they started to
+> look around the park together. As they looked around, they heard a strange
+> noise. It was coming from the bushes. They went to the bush and found a big,
+> friendly rabbit. The rabbit had taken Sara's red ball! The rabbit said, "I took
+> your red ball, so I wanted to play too!" Sara and Max laughed, happy to have made
+> a new friend. The three friends played together until the sun went down.
+> `<|endoftext|>`
+
+> **The sun was hot, so Ben wanted to eat something cold. He asked his mom,** "Can
+> I have some ice cream, please?" His mom said, "Yes, Ben. You can have some ice
+> cream." Ben was happy. He ate the ice cream very fast. But then, he saw an empty
+> box. He was sad because he wanted to eat something cold. […] In the end, Ben's
+> ice cream was all gone. Ben was very sad. The sun was too hot, and the day did
+> not turn out good. `<|endoftext|>`
+
+> **Tom and his dog went to the park. Suddenly,** he saw a big slide. He wanted to
+> go on the slide, but he did not know if it was safe. His friend, Sam, was there
+> and told him not to worry. Sam took Tom to the slide, and they climbed up and
+> slid down together. It was not lost after all, and they had fun. Max and Sam
+> played in the park all day. […] `<|endoftext|>`
+
+The smaller model, on the same two prompts:
+
+> **Sara had a red ball. One day, she lost it. She was very sad because** she loved
+> her red ball so much. That day, Lucy met a wise old owl. The owl told her that if
+> she gave her red ball back, the red ball would be her friend. […] The owl said,
+> "That is my red ball. You can have it back if you say thank you." Lucy learned
+> that being nice is important and can help others. `<|endoftext|>`
+
+> **The sun was hot, so Ben wanted to eat something cold. He asked his mom,** "What
+> is cocoa?" His mom said, "It is cold today. I bet you can have some cocoa if you
+> need some cold water." Ben happily accepted his cocoa and took a sip. The cocoa
+> was so warm that it made him feel cool. […] The end. `<|endoftext|>`
+
+Both models write almost flawless grammar, quote dialogue correctly, and give
+their stories a shape: a setup, a problem, a resolution, often a moral, and an
+end-of-text token of their own. The difference is consistency. The smaller model
+loses track of characters (Sara becomes Lucy) and of cause and effect (the cold
+treat is warm cocoa that makes Ben feel cool). The larger one keeps Sara, Max and
+the lost ball together through a whole story with a small mystery, and Ben's cold
+treat is ice cream. It is not perfect: Tom's story drifts from Tom to Max, it
+repeats itself at times, and now and then a phrase breaks ("she took a apart of
+the pastel colors").
+
+### Using the model
+
+The larger model and its tokenizer are attached to the
+[v1.0 release](https://github.com/12-ml-projects/transformer/releases/tag/v1.0).
+To download them into `checkpoints/`:
+
+```bash
+mkdir -p checkpoints
+curl -L -o checkpoints/l11.pt \
+    https://github.com/12-ml-projects/transformer/releases/download/v1.0/l11.pt
+curl -L -o checkpoints/merges.json \
+    https://github.com/12-ml-projects/transformer/releases/download/v1.0/merges.json
+```
+
+The checkpoint carries its configuration, so it is enough to rebuild the model.
+From the root of the repository, this continues a prompt:
+
+```python
+from pathlib import Path
+
+import torch
+
+from src.bpe import BPE
+from src.model.transformer import Decoder
+
+checkpoint = torch.load("checkpoints/l11.pt", map_location="cpu", weights_only=True)
+model = Decoder(**checkpoint["config"]).eval()
+model.load_state_dict(checkpoint["state_dict"])
+tokenizer = BPE.load(Path("checkpoints/merges.json"))
+END_OF_TEXT = tokenizer.vocab_size  # 4096, one past the tokenizer's vocabulary
+
+torch.manual_seed(0)
+ids = torch.tensor([tokenizer.encode("Once upon a time, there was a little dragon who")])
+with torch.no_grad():
+    for _ in range(200):
+        logits = model(ids[:, -256:])[:, -1, :] / 0.8  # temperature 0.8
+        next_id = torch.multinomial(torch.softmax(logits, dim=-1), num_samples=1)
+        if next_id.item() == END_OF_TEXT:
+            break
+        ids = torch.cat([ids, next_id], dim=1)
+
+print(tokenizer.decode(tuple(ids[0].tolist())))
+```
+
 ## Layout
 
 ```
